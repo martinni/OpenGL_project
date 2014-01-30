@@ -29,6 +29,7 @@ Tecla a: Visualizar en modo ajedrez
 Tecla 1: Activar objeto PLY cargado
 Tecla 2: Activar objeto por revolución
 Tecla 3: Activar objeto jerárquico
+Tecla 4 : Activar la escena
 Tecla Z/z: modifica primer grado de libertad del modelo jerárquico (angulo del brazo)
 Tecla X/x: modifica segundo grado de libertad del modelo jerárquico (angulo de los platillos)
 Tecla C/c: modifica tercer grado de libertad del modelo jerárquico (posicion de los cubos sobre los platillos)

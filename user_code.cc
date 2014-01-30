@@ -12,7 +12,7 @@
 
 using namespace std;
 
-void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion, int N){
+void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion, int N, Textura* textura){
 	
 	vector<float> vertices;	
 	vector<int> caras;
@@ -66,6 +66,18 @@ void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion,
 
 	calculate_normales_tri(malla);
 	calculate_normales_ver(malla);
+
+	//generamos las coordenadas de textura
+	if(revolucion==true && textura!=NULL)
+	{
+		// calcular tamaña de la tabla de cc.tt.
+		malla->tam_ctv = sizeof(Real)*2L*malla->num_ver ;
+
+		malla->cte_ver = (Tupla2r *)malloc(sizeof(Real)*2L*malla->num_ver);
+		calculate_coord_textura_revolucion(malla, N);
+	}
+	else
+		malla->cte_ver = 0;
 
 	MTVT_Crear_VBOs(malla);
 }
@@ -158,6 +170,13 @@ void MTVT_Crear_VBOs(MallaTVT * pm)
 	//crear VBO con las normales de los vertices
 	if(pm->nor_ver != NULL)
 		pm->id_vbo_nor_ver = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_ver, pm->nor_ver);
+
+	//crear VBO con las normales de los triangulos
+	if(pm->nor_tri != NULL)
+		pm->id_vbo_nor_tri = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_tri, pm->nor_tri);
+
+	//crear VBO con la table de coord. de textura
+	pm->id_vbo_cte_ver = VBO_Crear( GL_ARRAY_BUFFER, pm->tam_ctv, pm->cte_ver );
 }
 
 void MTVT_Visualizar_VBOs(MallaTVT *pm)
@@ -191,6 +210,7 @@ void MTVT_Visualizar_VBOs_AV(MallaTVT *pm)
 		glNormalPointer(GL_FLOAT, 0 , 0);	//formato y offset de normales
 		glEnableClientState(GL_NORMAL_ARRAY);	//activa uso de normales
 	}
+	
 	MTVT_Visualizar_VBOs(pm);	//viualizacion con glDrawElements
 
 	if(pm->col_ver!=NULL)
@@ -200,7 +220,49 @@ void MTVT_Visualizar_VBOs_AV(MallaTVT *pm)
 
 }
 
+void MTVT_Visualizar_VBOs_NCT_suave( MallaTVT * pm)
+{
+	// activar VBO de coordenadas de normales
+	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_nor_ver );
+	glNormalPointer( GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
+	glEnableClientState( GL_NORMAL_ARRAY );
 
+	// activar VBO de coordenadas de textura
+	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_cte_ver );
+	glTexCoordPointer( 2, GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
+	glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
+	glShadeModel(GL_SMOOTH); // activa sombreado de vértices
+
+	// visualizar (el mismo método ya visto)
+	MTVT_Visualizar_VBOs(pm);
+
+	// desactivar punteros a tablas
+	glDisableClientState( GL_NORMAL_ARRAY );
+	glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+}
+
+void MTVT_Visualizar_VBOs_NCT_plano( MallaTVT * pm)
+{
+	// activar VBO de coordenadas de normales
+	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_nor_tri );
+	glNormalPointer( GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
+	glEnableClientState( GL_NORMAL_ARRAY );
+
+	// activar VBO de coordenadas de textura
+	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_cte_ver );
+	glTexCoordPointer( 2, GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
+	glEnableClientState( GL_TEXTURE_COORD_ARRAY );
+
+	glShadeModel(GL_FLAT); // activa sombreado plano
+
+	// visualizar (el mismo método ya visto)
+	MTVT_Visualizar_VBOs(pm);
+
+	// desactivar punteros a tablas
+	glDisableClientState( GL_NORMAL_ARRAY );
+	glDisableClientState( GL_TEXTURE_COORD_ARRAY );
+}
 
 //**************************************************************************
 // funcion para generar y almacenar los vertices por revolucion
@@ -208,16 +270,17 @@ void MTVT_Visualizar_VBOs_AV(MallaTVT *pm)
 
 void generate_vertices( vector<float> vertices, vector<float> &vertices_final, int N, char eje){
 	    
-    int alpha, i,j;
+    int i,j;
+    double alpha;
 
     //Insercion del primero perfil en la lista
     for(i=0;i<vertices.size();i++)
 	vertices_final.push_back(vertices[i]); 
 
     //Generacion de los vertices con tecnica de revolucion (rotacion sobre el eje)
-    for(j=0;j<N;j++)
+    for(j=0;j<N-1;j++)
     {
-	alpha = j * (2*PI/N); 
+	alpha = j * (2*PI/(N-1)); 
 	for(i=0;i<vertices.size();i+=3)
 	{
 		float vx, vy, vz;
@@ -245,6 +308,35 @@ void generate_vertices( vector<float> vertices, vector<float> &vertices_final, i
 		vertices_final.push_back(vz); 
 	}			
     }
+
+	//Generacion del ultimo perfil (igual al primero)
+	alpha = 0;
+	for(i=0;i<vertices.size();i+=3)
+	{
+	 	float vx, vy, vz;
+		if(eje == 'X')	
+		{
+			vx = vertices[i];
+			vy = cos(alpha)*vertices[i+1] - sin(alpha)*vertices[i+2];
+			vz = sin(alpha)*vertices[i+1] + cos(alpha)*vertices[i+2];
+		}
+		else if(eje == 'Y')
+		{
+			vx = cos(alpha)*vertices[i] + sin(alpha)*vertices[i+2];
+			vy = vertices[i+1];
+			vz = -sin(alpha)*vertices[i] + cos(alpha)*vertices[i+2];
+		}
+		else	
+		{
+			vx = cos(alpha)*vertices[i] - sin(alpha)*vertices[i+1];
+			vy = sin(alpha)*vertices[i] + cos(alpha)*vertices[i+1];
+			vz = vertices[i+2];
+		}
+
+	 	vertices_final.push_back(vx); 
+		vertices_final.push_back(vy); 
+		vertices_final.push_back(vz); 
+	}
 
 	//Generacion de los 2 ultimos vertices para las tapas inferior y superior
 	float vx1, vy1, vz1, vx2, vy2, vz2;
@@ -429,6 +521,39 @@ void calculate_normales_ver(MallaTVT * malla)
 	}
 }
 
+double distancia(Tupla3r a, Tupla3r b)
+{
+	double x = pow((b.coo[0]-a.coo[0]), 2);
+	double y = pow((b.coo[1]-a.coo[1]), 2);
+
+	return sqrt((double)(x+y));
+}
+
+void calculate_coord_textura_revolucion(MallaTVT * malla, int N) 
+{
+	int M = (malla->num_ver-2)/N;
+
+	double d[M];	//vector de distancias
+	d[0] = 0;
+	for(unsigned int k=1; k<M; k++)
+		d[k] = d[k-1] + distancia(malla->ver[k-1], malla->ver[k]);
+
+	for(unsigned int i=0; i<N; i++)
+	{
+		for(unsigned int j=0; j<M; j++)
+		{
+			Tupla2r C;
+
+			C.coo[0] = i/(N-1);
+				
+			C.coo[1] = d[j]/d[M-1];	
+
+			//cout << "malla->cte_ver[" << i << "x" << j << "] = " << C.coo[0] << " " << C.coo[1] << endl;		
+			
+			malla->cte_ver[i*j] = C;
+		}
+	}
+}
 
 void NGE_Visualizar(NodoGE *nodo)
 {
@@ -438,7 +563,7 @@ void NGE_Visualizar(NodoGE *nodo)
 		switch(nodo->entrada[i].tipo)	//segun tipo:
 		{
 			case '0' : 	//malla
-				MTVT_Visualizar_VBOs_AV(nodo->entrada[i].malla);
+				MTVT_Visualizar_VBOs_NCT_suave(nodo->entrada[i].malla);
 				break;
 			case '1' :	//sub-escena
 				NGE_Visualizar(nodo->entrada[i].subesc);
@@ -462,18 +587,20 @@ void ComponerTrans(ParTransformacion *pt)
 			break;
 		case '1' :	//escalado
 			glScalef(pt->par[0], pt->par[1], pt->par[2]);
+			break;
 		case '2' :
 			glTranslatef(pt->par[0], pt->par[1], pt->par[2]);
+			break;
 	}
 }; 
 
-EntradaNGE mallaInst(const char* nombre_fichero, bool revolucion = false)
+EntradaNGE mallaInst(const char* nombre_fichero, bool revolucion = false, Textura* textura = NULL)
 {
 	EntradaNGE objeto;
 	objeto.tipo = '0';
 
 	MallaTVT* malla = (MallaTVT*)malloc(sizeof(MallaTVT));
-	generar_malla(malla, nombre_fichero, revolucion, 6);
+	generar_malla(malla, nombre_fichero, revolucion, 50,textura);
 	objeto.malla = malla;
 
 	return objeto;
@@ -494,6 +621,129 @@ EntradaNGE transformacionInst(char tipo, Real x, Real y, Real z, Real angulo = 0
 	transfEntrada.transf = transf;
 	
 	return transfEntrada;
+}
+
+void activar_fuente1(FuenteLuz* fuente)
+{
+	glEnable(GL_LIGHT0) ; 
+		
+	glLightfv( GL_LIGHT0, GL_AMBIENT, fuente->col ) ; // hace SiA := (r a , ga , ba )
+	//glLightfv( GL_LIGHT0, GL_DIFFUSE, cdf ) ; // hace SiD := (rd , gd , bd )
+	//glLightfv( GL_LIGHT0, GL_SPECULAR, csf ) ; // hace SiS := (rs , gs , bs )
+
+	if(fuente->tipo==0)
+		glLightfv( GL_LIGHT0, GL_POSITION, fuente->posf );
+
+	if(fuente->tipo==1)
+	{
+		const float ejeZ[4] = { 0.0, 0.0, 1.0, 0.0 } ;
+		glMatrixMode( GL_MODELVIEW ) ;
+		glPushMatrix() ;
+		glLoadIdentity() ;
+		// hacer M = Ide
+		//glMultMatrix() ; // A podría ser Ide,V o V N
+		// (3) rotación α grados en torno a eje Y
+		glRotatef( fuente->alpha, 0.0, 1.0, 0.0 ) ;
+		// (2) rotación β grados en torno al eje X-
+		glRotatef( fuente->beta, -1.0, 0.0, 0.0 ) ;
+		// (1) hacer li := (0, 0, 1) (paralela eje Z+)
+		
+		glLightfv( GL_LIGHT0, GL_POSITION, ejeZ );
+
+		glPopMatrix() ;
+	}
+}
+
+void activar_fuente2(FuenteLuz* fuente)
+{
+	glEnable(GL_LIGHT2) ; 
+		
+	glLightfv( GL_LIGHT2, GL_AMBIENT, fuente->col ) ; // hace SiA := (r a , ga , ba )
+	//glLightfv( GL_LIGHT0, GL_DIFFUSE, cdf ) ; // hace SiD := (rd , gd , bd )
+	//glLightfv( GL_LIGHT0, GL_SPECULAR, csf ) ; // hace SiS := (rs , gs , bs )
+
+	if(fuente->tipo==0)
+		glLightfv( GL_LIGHT2, GL_POSITION, fuente->posf );
+
+	if(fuente->tipo==1)
+	{
+		const float ejeZ[4] = { 0.0, 0.0, 1.0, 0.0 } ;
+		glMatrixMode( GL_MODELVIEW ) ;
+		glPushMatrix() ;
+		glLoadIdentity() ;
+		// hacer M = Ide
+		//glMultMatrix() ; // A podría ser Ide,V o V N
+		// (3) rotación α grados en torno a eje Y
+		glRotatef( fuente->alpha, 0.0, 1.0, 0.0 ) ;
+		// (2) rotación β grados en torno al eje X-
+		glRotatef( fuente->beta, -1.0, 0.0, 0.0 ) ;
+		// (1) hacer li := (0, 0, 1) (paralela eje Z+)
+		
+		glLightfv( GL_LIGHT2, GL_POSITION, ejeZ );
+
+		glPopMatrix() ;
+	}
+}
+
+void activar_textura(Textura* textura)
+{
+	glEnable( GL_TEXTURE_2D ) ; // habilita texturas
+
+	if(textura->idTex == 0)
+	{
+		jpg::Imagen * pimg = NULL ;
+
+		// cargar la imagen (una sola vez!)
+		pimg = new jpg::Imagen(textura->nombre_fichero);
+	
+		// usar con
+		//tamy = pimg->tamY(); // num. filas (unsigned)
+		textura->texels = pimg->leerPixels(); // puntero texels (unsigned char *)
+
+		//tamx = pimg->tamX(); // num. columnas (unsigned)
+		// hace idTex igual a un nuevo identificador
+		glGenTextures( 1, &textura->idTex );
+
+		cout << "cargando la textura en memoria" << endl;
+	}
+
+	// activa textura con identificador ’idTex’ :
+	glBindTexture( GL_TEXTURE_2D, textura->idTex );
+
+
+	if(textura->genAuto)
+	{
+		glEnable( GL_TEXTURE_GEN_S ); // desactivado inicialmente
+		glEnable( GL_TEXTURE_GEN_T ); // desactivado inicialment
+
+		// para el modo de coords. de objeto:
+		glTexGenfv( GL_S, GL_OBJECT_PLANE, textura->coefsS ) ;
+		glTexGenfv( GL_T, GL_OBJECT_PLANE, textura->coefsT ) ;
+		
+		// para el modo de coords. del ojo:
+		//glTexGenfv( GL_S, GL_EYE_PLANE, coefsS ) ;
+		//glTexGenfv( GL_T, GL_EYE_PLANE, coefsT ) ;
+	}
+	else
+	{
+		glDisable( GL_TEXTURE_GEN_S ); // desactivado inicialmente
+		glDisable( GL_TEXTURE_GEN_T ); // desactivado inicialment
+	}
+}
+
+void activar_material(Material* material)
+{
+	glEnable(GL_LIGHTING); // activa evaluacion del MIL
+
+	glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT, material->colorA ) ;
+	glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE, material->colorD ) ;
+	glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, material->colorS ) ;
+	glMaterialf( GL_FRONT_AND_BACK, GL_SHININESS, material->e ) ;
+
+	if(material->textura != NULL)
+		activar_textura(material->textura);
+	else
+		glDisable( GL_TEXTURE_2D ) ; 
 }
 
 EntradaNGE pesaInst(Real alpha, Real d)
@@ -587,7 +837,7 @@ EntradaNGE brazoInst(Real alpha1, Real alpha2, Real d)
 }
 
 
-void escena(Real alpha1, Real alpha2, Real d)
+void escena3(Real alpha1, Real alpha2, Real d)
 {
 	NodoGE grafoEscena;
 
@@ -608,6 +858,72 @@ void escena(Real alpha1, Real alpha2, Real d)
 
 	NGE_Visualizar(&grafoEscena);
 };
+
+EntradaNGE lataInst()
+{
+	EntradaNGE lataEntrada;
+	lataEntrada.tipo = '1';
+
+	NodoGE* lata = new NodoGE;
+
+	Textura* text_lata = (Textura*)malloc(sizeof(Textura));
+	text_lata->idTex = 0;
+	text_lata->nombre_fichero = "text-lata-1.jpg";
+	text_lata->genAuto = false;
+	activar_textura(text_lata);
+
+	EntradaNGE lata_pcue = mallaInst("lata-pcue.ply", true, text_lata);
+
+	lata->entrada.push_back(lata_pcue); 
+
+	EntradaNGE lata_psup = mallaInst("lata-psup.ply", true);
+	lata->entrada.push_back(lata_psup); 
+
+	EntradaNGE lata_pinf = mallaInst("lata-pinf.ply", true);
+	lata->entrada.push_back(lata_pinf); 
+
+	lataEntrada.subesc = lata;
+
+	return lataEntrada;
+}
+
+void escena4()
+{
+	NodoGE grafoEscena;
+
+	EntradaNGE esc = transformacionInst('1', (Real)5.0, (Real)5.0, (Real)5.0);	
+	grafoEscena.entrada.push_back(esc); 
+
+	EntradaNGE lataEntrada = lataInst();
+	grafoEscena.entrada.push_back(lataEntrada);
+
+	EntradaNGE esc2 = transformacionInst('1', (Real)0.05, (Real)0.05, (Real)0.05);	
+	grafoEscena.entrada.push_back(esc2); 
+
+	EntradaNGE trans = transformacionInst('2', (Real)-15.0, (Real)0.0, (Real)0.0);	
+	grafoEscena.entrada.push_back(trans); 
+
+	EntradaNGE peon1 = mallaInst("peon.ply", true);
+	grafoEscena.entrada.push_back(peon1);
+
+	EntradaNGE trans2 = transformacionInst('2', (Real)0.0, (Real)0.0, (Real)10.0);	
+	grafoEscena.entrada.push_back(trans2); 
+
+	EntradaNGE peon2 = mallaInst("peon.ply", true);
+	grafoEscena.entrada.push_back(peon2);
+
+	EntradaNGE trans3 = transformacionInst('2', (Real)0.0, (Real)0.0, (Real)10.0);	
+	grafoEscena.entrada.push_back(trans3); 
+
+	EntradaNGE peon3 = mallaInst("peon.ply", true);
+	grafoEscena.entrada.push_back(peon3);
+
+	NGE_Visualizar(&grafoEscena);
+}
+
+
+
+
 
 
 
