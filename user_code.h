@@ -139,11 +139,47 @@ struct Material
 };
 
 
-void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion, int N, Textura* textura = NULL);
 
-void draw_malla(MallaTVT* malla, int modo);
+
+//****************************************************************************
+// Funciones para generar una malla (leer ply y generar atributos de la malla)
+//****************************************************************************
 
 void leer_ply(const char* nombre_fichero, bool revolucion, vector<float> &vertices, vector<int> &caras, int N);
+
+void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion, int N);
+
+
+//****************************************************************************************
+// Funciones para generar y almacenar los vertices y caras (malla generada por revolucion)
+//****************************************************************************************
+
+void generate_vertices( vector<float> vertices, vector<float> &vertices_final, int N, char eje);
+
+void generate_faces(vector<int> &caras, int N, int M);
+
+
+//*******************************************************************************************************
+// Funciones para generar y almacenar los normales a los vertices y caras (malla generada por revolucion)
+//*******************************************************************************************************
+
+void calculate_normales_tri(MallaTVT* malla);
+
+void calculate_normales_ver(MallaTVT * malla);
+
+
+//***************************************************************************************
+// Funcion para generar y almacenar los coord. de textura (malla generada por revolucion)
+//***************************************************************************************
+
+void calculate_coord_textura_revolucion(MallaTVT * malla, int N);
+
+
+//********************************************************************
+// Funciones para dibujar una malla (creacion y visualizacion de VBOs)
+//*********************************************************************
+
+void draw_malla(MallaTVT* malla, int modo);
 
 void MTVT_Visualizar_VA(MallaTVT * pm);
 
@@ -155,30 +191,44 @@ void MTVT_Visualizar_VBOs(MallaTVT *pm);
 
 void MTVT_Visualizar_VBOs_AV(MallaTVT *pm);
 
-void generate_vertices( vector<float> vertices, vector<float> &vertices_final, int N, char eje);
 
-void generate_faces(vector<int> &caras, int N, int M);
+//*****************************************************************************************
+// Funciones para inicializar la entrada de una malla/una transformacion con sus atributos
+//*****************************************************************************************
 
-void calculate_normales_tri(MallaTVT* malla);
+EntradaNGE malla(const char* nombre_fichero, bool revolucion);
 
-void calculate_normales_ver(MallaTVT * malla);
-
-void calculate_coord_textura_revolucion(MallaTVT * malla, int N);
+EntradaNGE transformacion(char tipo, Real x, Real y, Real z, Real angulo);
 
 
-// funciones de la practica3
+//**************************************************************************
+// Funciones para visualizar un nodo de entradas (mallas y transformaciones)
+//**************************************************************************
 
-void NGE_Visualizar(NodoGE *nodo, int modo);
+void NGE_Visualizar(NodoGE *nodo);
 
 void ComponerTrans(ParTransformacion *pt);
 
-void escena3(Real h, Real alpha, Real d);
 
 
-// funciones de la practica4
+//******************************************************
+// Funciones para inicializar los objetos de la escena 3
+//******************************************************
 
-void escena4();
+EntradaNGE pesa(Real alpha, Real d);
+
+EntradaNGE brazo(Real alpha1, Real alpha2, Real d);
+
+NodoGE* escena3(Real alpha1, Real alpha2, Real d);
 
 
+
+//******************************************************
+// Funciones para inicializar los objetos de la escena 4
+//******************************************************
+
+EntradaNGE lata();
+
+NodoGE* escena4();
 
 

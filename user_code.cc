@@ -12,7 +12,69 @@
 
 using namespace std;
 
-void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion, int N, Textura* textura){
+
+
+//***********************************
+// Funciones utiles para los calculos
+//***********************************
+
+
+Tupla3r producto_vectorial(Tupla3r U, Tupla3r V)
+{
+	Tupla3r W;
+	W.coo[0] = U.coo[1]*V.coo[2] - U.coo[2]*V.coo[1];
+	W.coo[1] = U.coo[2]*V.coo[0] - U.coo[0]*V.coo[1];
+	W.coo[2] = U.coo[0]*V.coo[1] - U.coo[1]*V.coo[0];
+
+	return W;  
+}
+
+
+Tupla3r sum_vector(Tupla3r U, Tupla3r V)
+{
+	Tupla3r W;
+	W.coo[0] = U.coo[0] + V.coo[0];
+	W.coo[1] = U.coo[1] + V.coo[1];
+	W.coo[2] = U.coo[2] + V.coo[2];
+
+	return W;
+}
+
+double distancia(Tupla3r a, Tupla3r b)
+{
+	double x = pow((b.coo[0]-a.coo[0]), 2);
+	double y = pow((b.coo[1]-a.coo[1]), 2);
+
+	return sqrt((double)(x+y));
+}
+
+//****************************************************************************
+// Funciones para generar una malla (leer ply y generar atributos de la malla)
+//****************************************************************************
+
+
+void leer_ply(const char* nombre_fichero, bool revolucion, vector<float> &vertices, vector<int> &caras, int N)
+{
+	if(revolucion)
+	{
+		vector<float> vertices_perfil;
+		ply::read_vertices(nombre_fichero, vertices_perfil);
+
+		//generamos los otros vertices 
+	  	 generate_vertices(vertices_perfil, vertices, N, 'Y');
+	   
+	   	//generamos las caras
+	   	generate_faces(caras, N, vertices_perfil.size()/3);
+	}
+	else
+	{
+		ply::read(nombre_fichero, vertices, caras);
+	}
+	
+}
+
+
+void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion, int N){
 	
 	vector<float> vertices;	
 	vector<int> caras;
@@ -68,7 +130,7 @@ void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion,
 	calculate_normales_ver(malla);
 
 	//generamos las coordenadas de textura
-	if(revolucion==true && textura!=NULL)
+	if(revolucion==true)
 	{
 		// calcular tamaña de la tabla de cc.tt.
 		malla->tam_ctv = sizeof(Real)*2L*malla->num_ver ;
@@ -83,193 +145,12 @@ void generar_malla(MallaTVT* malla, const char* nombre_fichero, bool revolucion,
 }
 
 
-void draw_malla(MallaTVT* malla, int modo)
-{
-	if(modo==1)
-		glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);//Puntos	
-	if(modo==2)
-		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);//Aristas	
-	if(modo==3)
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);//Solido	
-	if(modo==4)
-		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);//Ajedrez		
+//**************************************************************************************
+// Funciones para generar y almacenar los vertices y caras (malla generada por revolucion)
+//**************************************************************************************
 
-
-	MTVT_Visualizar_VBOs_AV(malla);
-}
-
-
-void leer_ply(const char* nombre_fichero, bool revolucion, vector<float> &vertices, vector<int> &caras, int N)
-{
-	if(revolucion)
-	{
-		vector<float> vertices_perfil;
-		ply::read_vertices(nombre_fichero, vertices_perfil);
-
-		//generamos los otros vertices 
-	  	 generate_vertices(vertices_perfil, vertices, N, 'Y');
-	   
-	   	//generamos las caras
-	   	generate_faces(caras, N, vertices_perfil.size()/3);
-	}
-	else
-	{
-		ply::read(nombre_fichero, vertices, caras);
-	}
-	
-}
-
-
-void MTVT_Visualizar_VA(MallaTVT * pm)
-{
-	if(pm->nor_ver!=NULL)		//si hay normales de v. disponibles
-	{	
-		glEnableClientState(GL_NORMAL_ARRAY) ;		//habilitar uso de array de normales
-		glNormalPointer(GL_FLOAT, 0, pm->nor_ver) ;	//especifica puntero a normales
-	}
-	
-	if(pm->col_ver!=NULL)		//si hay colores de v. disponibles
-	{	
-		glEnableClientState(GL_COLOR_ARRAY) ;		//habilitar uso de array de col.
-		glColorPointer(3, GL_FLOAT, 0, pm->col_ver) ;	//especifica puntero a colores
-	}
-
-	//habilitar 'vertex arrays'
-	glEnableClientState(GL_VERTEX_ARRAY) ;
-	//espicificar puntero a tabla de coords. de vertices
-	glVertexPointer(3, GL_FLOAT, 0 , pm->ver);
-	//dibujar usando vertices indexados
-	glDrawElements(GL_TRIANGLES, 3*pm->num_tri, GL_UNSIGNED_INT, pm->tri);
-}
-
-
-GLuint VBO_Crear(GLuint tipo, GLuint tamanio, GLvoid * puntero)
-{
-	assert(tipo==GL_ARRAY_BUFFER || tipo==GL_ELEMENT_ARRAY_BUFFER) ;
-	GLuint id_vbo ;		//resultado: identificador de VBO
-	glGenBuffers(1, &id_vbo) ;	//crear nuevo VBO, obterner identificador
-	glBindBuffer(tipo, id_vbo) ; 	//activar el VBO usando su identificador
-	glBufferData(tipo, tamanio, puntero, GL_STATIC_DRAW) ;		//transferencia RAM->GPU
-	glBindBuffer(tipo, 0);		//desactivacion del VBO (activar 0)
-	return id_vbo ;		//devolver el identificador resultado
-}
-
-
-void MTVT_Crear_VBOs(MallaTVT * pm)
-{
-	//crear VBO conteniendo la tabla de vertices
-	pm->id_vbo_ver = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_ver, pm->ver);
-
-	//crear VBO con la tabla de triangulos (indices de vertices)
-	pm->id_vbo_tri = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_tri, pm->tri);
-
-	//crear VBO con los colores de los vertices
-	if(pm->col_ver != NULL)
-		pm->id_vbo_col_ver = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_ver, pm->col_ver);
-
-	//crear VBO con las normales de los vertices
-	if(pm->nor_ver != NULL)
-		pm->id_vbo_nor_ver = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_ver, pm->nor_ver);
-
-	//crear VBO con las normales de los triangulos
-	if(pm->nor_tri != NULL)
-		pm->id_vbo_nor_tri = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_tri, pm->nor_tri);
-
-	//crear VBO con la table de coord. de textura
-	pm->id_vbo_cte_ver = VBO_Crear( GL_ARRAY_BUFFER, pm->tam_ctv, pm->cte_ver );
-}
-
-void MTVT_Visualizar_VBOs(MallaTVT *pm)
-{
-	//especificar formato de los vertices en su VBO (y offset)
-	glBindBuffer(GL_ARRAY_BUFFER, pm->id_vbo_ver) ;		//act. VBO
-	glVertexPointer(3, GL_FLOAT, 0, 0);		//formato y offset (0)
-	glBindBuffer(GL_ARRAY_BUFFER, 0);		//desact VBO
-	glEnableClientState(GL_VERTEX_ARRAY);		//act. uso VA
-
-	//visualizar con glDrawElements (puntero a tabla == NULL)
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pm->id_vbo_tri);
-	glDrawElements(GL_TRIANGLES, 3L*pm->num_tri, GL_UNSIGNED_INT, NULL) ;
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-
-	//desactivar uso de array de vertices
-	glDisableClientState(GL_VERTEX_ARRAY);
-}
-
-void MTVT_Visualizar_VBOs_AV(MallaTVT *pm)
-{
-	if(pm->col_ver!=NULL)
-	{
-		glBindBuffer(GL_ARRAY_BUFFER, pm->id_vbo_col_ver);	//act. VBO col. v.
-		glColorPointer(3, GL_FLOAT, 0 , 0);	//formato y offset de colores
-		glEnableClientState(GL_COLOR_ARRAY);	//activa uso de colores de v.
-	}
-	if(pm->nor_ver!=NULL)
-	{
-		glBindBuffer(GL_ARRAY_BUFFER, pm->id_vbo_nor_ver);	//act. VBO nor. v.
-		glNormalPointer(GL_FLOAT, 0 , 0);	//formato y offset de normales
-		glEnableClientState(GL_NORMAL_ARRAY);	//activa uso de normales
-	}
-	
-	MTVT_Visualizar_VBOs(pm);	//viualizacion con glDrawElements
-
-	if(pm->col_ver!=NULL)
-		glDisableClientState(GL_COLOR_ARRAY);	//desact. array de colores
-	if(pm->nor_ver!=NULL)
-		glDisableClientState(GL_NORMAL_ARRAY);	//desact. array de normales
-
-}
-
-void MTVT_Visualizar_VBOs_NCT_suave( MallaTVT * pm)
-{
-	// activar VBO de coordenadas de normales
-	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_nor_ver );
-	glNormalPointer( GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
-	glEnableClientState( GL_NORMAL_ARRAY );
-
-	// activar VBO de coordenadas de textura
-	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_cte_ver );
-	glTexCoordPointer( 2, GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
-	glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-
-	glShadeModel(GL_SMOOTH); // activa sombreado de vértices
-
-	// visualizar (el mismo método ya visto)
-	MTVT_Visualizar_VBOs(pm);
-
-	// desactivar punteros a tablas
-	glDisableClientState( GL_NORMAL_ARRAY );
-	glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-}
-
-void MTVT_Visualizar_VBOs_NCT_plano( MallaTVT * pm)
-{
-	// activar VBO de coordenadas de normales
-	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_nor_tri );
-	glNormalPointer( GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
-	glEnableClientState( GL_NORMAL_ARRAY );
-
-	// activar VBO de coordenadas de textura
-	glBindBuffer( GL_ARRAY_BUFFER, pm->id_vbo_cte_ver );
-	glTexCoordPointer( 2, GL_FLOAT, 0, 0 );	// (0 == offset en vbo)
-	glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-
-	glShadeModel(GL_FLAT); // activa sombreado plano
-
-	// visualizar (el mismo método ya visto)
-	MTVT_Visualizar_VBOs(pm);
-
-	// desactivar punteros a tablas
-	glDisableClientState( GL_NORMAL_ARRAY );
-	glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-}
-
-//**************************************************************************
-// funcion para generar y almacenar los vertices por revolucion
-//**************************************************************************
-
-void generate_vertices( vector<float> vertices, vector<float> &vertices_final, int N, char eje){
-	    
+void generate_vertices( vector<float> vertices, vector<float> &vertices_final, int N, char eje)
+{	    
     int i,j;
     double alpha;
 
@@ -381,10 +262,6 @@ void generate_vertices( vector<float> vertices, vector<float> &vertices_final, i
 }
 
 
-
-//**************************************************************************
-// funcion para generar y almacenar las caras por revolucion
-//**************************************************************************
 void generate_faces(vector<int> &caras, int N, int M)
 {
 	for(unsigned int i=0;i<N+1;i++)
@@ -442,28 +319,9 @@ void generate_faces(vector<int> &caras, int N, int M)
 }
 
 
-
-Tupla3r producto_vectorial(Tupla3r U, Tupla3r V)
-{
-	Tupla3r W;
-	W.coo[0] = U.coo[1]*V.coo[2] - U.coo[2]*V.coo[1];
-	W.coo[1] = U.coo[2]*V.coo[0] - U.coo[0]*V.coo[1];
-	W.coo[2] = U.coo[0]*V.coo[1] - U.coo[1]*V.coo[0];
-
-	return W;  
-}
-
-
-Tupla3r sum_vector(Tupla3r U, Tupla3r V)
-{
-	Tupla3r W;
-	W.coo[0] = U.coo[0] + V.coo[0];
-	W.coo[1] = U.coo[1] + V.coo[1];
-	W.coo[2] = U.coo[2] + V.coo[2];
-
-	return W;
-}
-
+//*****************************************************************************************************
+// Funciones para generar y almacenar los normales a los vertices y caras (malla generada por revolucion)
+//*****************************************************************************************************
 
 void calculate_normales_tri(MallaTVT* malla)
 {
@@ -521,13 +379,10 @@ void calculate_normales_ver(MallaTVT * malla)
 	}
 }
 
-double distancia(Tupla3r a, Tupla3r b)
-{
-	double x = pow((b.coo[0]-a.coo[0]), 2);
-	double y = pow((b.coo[1]-a.coo[1]), 2);
 
-	return sqrt((double)(x+y));
-}
+//***************************************************************************************
+// Funcion para generar y almacenar los coord. de textura (malla generada por revolucion)
+//***************************************************************************************
 
 void calculate_coord_textura_revolucion(MallaTVT * malla, int N) 
 {
@@ -555,6 +410,165 @@ void calculate_coord_textura_revolucion(MallaTVT * malla, int N)
 	}
 }
 
+
+
+//********************************************************************
+// Funciones para dibujar una malla (creacion y visualizacion de VBOs)
+//********************************************************************
+
+void draw_malla(MallaTVT* malla, int modo)
+{
+	if(modo==1)
+		glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);//Puntos	
+	if(modo==2)
+		glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);//Aristas	
+	if(modo==3)
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);//Solido	
+	if(modo==4)
+		glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);//Ajedrez		
+
+
+	MTVT_Visualizar_VBOs_AV(malla);
+}
+
+
+void MTVT_Visualizar_VA(MallaTVT * pm)
+{
+	if(pm->nor_ver!=NULL)		//si hay normales de v. disponibles
+	{	
+		glEnableClientState(GL_NORMAL_ARRAY) ;		//habilitar uso de array de normales
+		glNormalPointer(GL_FLOAT, 0, pm->nor_ver) ;	//especifica puntero a normales
+	}
+	
+	if(pm->col_ver!=NULL)		//si hay colores de v. disponibles
+	{	
+		glEnableClientState(GL_COLOR_ARRAY) ;		//habilitar uso de array de col.
+		glColorPointer(3, GL_FLOAT, 0, pm->col_ver) ;	//especifica puntero a colores
+	}
+
+	//habilitar 'vertex arrays'
+	glEnableClientState(GL_VERTEX_ARRAY) ;
+	//espicificar puntero a tabla de coords. de vertices
+	glVertexPointer(3, GL_FLOAT, 0 , pm->ver);
+	//dibujar usando vertices indexados
+	glDrawElements(GL_TRIANGLES, 3*pm->num_tri, GL_UNSIGNED_INT, pm->tri);
+}
+
+
+GLuint VBO_Crear(GLuint tipo, GLuint tamanio, GLvoid * puntero)
+{
+	assert(tipo==GL_ARRAY_BUFFER || tipo==GL_ELEMENT_ARRAY_BUFFER) ;
+	GLuint id_vbo ;		//resultado: identificador de VBO
+	glGenBuffers(1, &id_vbo) ;	//crear nuevo VBO, obterner identificador
+	glBindBuffer(tipo, id_vbo) ; 	//activar el VBO usando su identificador
+	glBufferData(tipo, tamanio, puntero, GL_STATIC_DRAW) ;		//transferencia RAM->GPU
+	glBindBuffer(tipo, 0);		//desactivacion del VBO (activar 0)
+	return id_vbo ;		//devolver el identificador resultado
+}
+
+
+void MTVT_Crear_VBOs(MallaTVT * pm)
+{
+	//crear VBO conteniendo la tabla de vertices
+	pm->id_vbo_ver = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_ver, pm->ver);
+
+	//crear VBO con la tabla de triangulos (indices de vertices)
+	pm->id_vbo_tri = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_tri, pm->tri);
+
+	//crear VBO con los colores de los vertices
+	if(pm->col_ver != NULL)
+		pm->id_vbo_col_ver = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_ver, pm->col_ver);
+
+	//crear VBO con las normales de los vertices
+	if(pm->nor_ver != NULL)
+		pm->id_vbo_nor_ver = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_ver, pm->nor_ver);
+
+	//crear VBO con las normales de los triangulos
+	if(pm->nor_tri != NULL)
+		pm->id_vbo_nor_tri = VBO_Crear(GL_ARRAY_BUFFER, pm->tam_tri, pm->nor_tri);
+
+	//crear VBO con la table de coord. de textura
+	pm->id_vbo_cte_ver = VBO_Crear( GL_ARRAY_BUFFER, pm->tam_ctv, pm->cte_ver );
+}
+
+void MTVT_Visualizar_VBOs(MallaTVT *pm)
+{
+	//especificar formato de los vertices en su VBO (y offset)
+	glBindBuffer(GL_ARRAY_BUFFER, pm->id_vbo_ver) ;		//act. VBO
+	glVertexPointer(3, GL_FLOAT, 0, 0);		//formato y offset (0)
+	glBindBuffer(GL_ARRAY_BUFFER, 0);		//desact VBO
+	glEnableClientState(GL_VERTEX_ARRAY);		//act. uso VA
+
+	//visualizar con glDrawElements (puntero a tabla == NULL)
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, pm->id_vbo_tri);
+	glDrawElements(GL_TRIANGLES, 3L*pm->num_tri, GL_UNSIGNED_INT, NULL) ;
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+
+	//desactivar uso de array de vertices
+	glDisableClientState(GL_VERTEX_ARRAY);
+}
+
+void MTVT_Visualizar_VBOs_AV(MallaTVT *pm)
+{
+	if(pm->col_ver!=NULL)
+	{
+		glBindBuffer(GL_ARRAY_BUFFER, pm->id_vbo_col_ver);	//act. VBO col. v.
+		glColorPointer(3, GL_FLOAT, 0 , 0);	//formato y offset de colores
+		glEnableClientState(GL_COLOR_ARRAY);	//activa uso de colores de v.
+	}
+	if(pm->nor_ver!=NULL)
+	{
+		glBindBuffer(GL_ARRAY_BUFFER, pm->id_vbo_nor_ver);	//act. VBO nor. v.
+		glNormalPointer(GL_FLOAT, 0 , 0);	//formato y offset de normales
+		glEnableClientState(GL_NORMAL_ARRAY);	//activa uso de normales
+	}
+	
+	MTVT_Visualizar_VBOs(pm);	//viualizacion con glDrawElements
+
+	if(pm->col_ver!=NULL)
+		glDisableClientState(GL_COLOR_ARRAY);	//desact. array de colores
+	if(pm->nor_ver!=NULL)
+		glDisableClientState(GL_NORMAL_ARRAY);	//desact. array de normales
+
+}
+
+//*****************************************************************************************
+// Funciones para inicializar la entrada de una malla/una transformacion con sus atributos
+//*****************************************************************************************
+
+EntradaNGE malla(const char* nombre_fichero, bool revolucion = false)
+{
+	EntradaNGE objeto;
+	objeto.tipo = '0';
+
+	MallaTVT* malla = (MallaTVT*)malloc(sizeof(MallaTVT));
+	generar_malla(malla, nombre_fichero, revolucion, 50);
+	objeto.malla = malla;
+
+	return objeto;
+};
+
+EntradaNGE transformacion(char tipo, Real x, Real y, Real z, Real angulo = 0)
+{
+	EntradaNGE transfEntrada;
+	transfEntrada.tipo = '2';
+
+	ParTransformacion* transf = (ParTransformacion*)malloc(sizeof(ParTransformacion));
+	transf->tipo = tipo;
+	transf->par[0] = x;
+	transf->par[1] = y;
+	transf->par[2] = z;
+	transf->angulo = angulo;
+	
+	transfEntrada.transf = transf;
+	
+	return transfEntrada;
+}
+
+//**************************************************************************
+// Funciones para visualizar un nodo de entradas (mallas y transformaciones)
+//**************************************************************************
+
 void NGE_Visualizar(NodoGE *nodo)
 {
 	glPushMatrix();
@@ -563,7 +577,7 @@ void NGE_Visualizar(NodoGE *nodo)
 		switch(nodo->entrada[i].tipo)	//segun tipo:
 		{
 			case '0' : 	//malla
-				MTVT_Visualizar_VBOs_NCT_suave(nodo->entrada[i].malla);
+				MTVT_Visualizar_VBOs_AV(nodo->entrada[i].malla);
 				break;
 			case '1' :	//sub-escena
 				NGE_Visualizar(nodo->entrada[i].subesc);
@@ -594,199 +608,52 @@ void ComponerTrans(ParTransformacion *pt)
 	}
 }; 
 
-EntradaNGE mallaInst(const char* nombre_fichero, bool revolucion = false, Textura* textura = NULL)
-{
-	EntradaNGE objeto;
-	objeto.tipo = '0';
 
-	MallaTVT* malla = (MallaTVT*)malloc(sizeof(MallaTVT));
-	generar_malla(malla, nombre_fichero, revolucion, 50,textura);
-	objeto.malla = malla;
+//******************************************************
+// Funciones para inicializar los objetos de la escena 3
+//******************************************************
 
-	return objeto;
-};
-
-EntradaNGE transformacionInst(char tipo, Real x, Real y, Real z, Real angulo = 0)
-{
-	EntradaNGE transfEntrada;
-	transfEntrada.tipo = '2';
-
-	ParTransformacion* transf = (ParTransformacion*)malloc(sizeof(ParTransformacion));
-	transf->tipo = tipo;
-	transf->par[0] = x;
-	transf->par[1] = y;
-	transf->par[2] = z;
-	transf->angulo = angulo;
-	
-	transfEntrada.transf = transf;
-	
-	return transfEntrada;
-}
-
-void activar_fuente1(FuenteLuz* fuente)
-{
-	glEnable(GL_LIGHT0) ; 
-		
-	glLightfv( GL_LIGHT0, GL_AMBIENT, fuente->col ) ; // hace SiA := (r a , ga , ba )
-	//glLightfv( GL_LIGHT0, GL_DIFFUSE, cdf ) ; // hace SiD := (rd , gd , bd )
-	//glLightfv( GL_LIGHT0, GL_SPECULAR, csf ) ; // hace SiS := (rs , gs , bs )
-
-	if(fuente->tipo==0)
-		glLightfv( GL_LIGHT0, GL_POSITION, fuente->posf );
-
-	if(fuente->tipo==1)
-	{
-		const float ejeZ[4] = { 0.0, 0.0, 1.0, 0.0 } ;
-		glMatrixMode( GL_MODELVIEW ) ;
-		glPushMatrix() ;
-		glLoadIdentity() ;
-		// hacer M = Ide
-		//glMultMatrix() ; // A podría ser Ide,V o V N
-		// (3) rotación α grados en torno a eje Y
-		glRotatef( fuente->alpha, 0.0, 1.0, 0.0 ) ;
-		// (2) rotación β grados en torno al eje X-
-		glRotatef( fuente->beta, -1.0, 0.0, 0.0 ) ;
-		// (1) hacer li := (0, 0, 1) (paralela eje Z+)
-		
-		glLightfv( GL_LIGHT0, GL_POSITION, ejeZ );
-
-		glPopMatrix() ;
-	}
-}
-
-void activar_fuente2(FuenteLuz* fuente)
-{
-	glEnable(GL_LIGHT2) ; 
-		
-	glLightfv( GL_LIGHT2, GL_AMBIENT, fuente->col ) ; // hace SiA := (r a , ga , ba )
-	//glLightfv( GL_LIGHT0, GL_DIFFUSE, cdf ) ; // hace SiD := (rd , gd , bd )
-	//glLightfv( GL_LIGHT0, GL_SPECULAR, csf ) ; // hace SiS := (rs , gs , bs )
-
-	if(fuente->tipo==0)
-		glLightfv( GL_LIGHT2, GL_POSITION, fuente->posf );
-
-	if(fuente->tipo==1)
-	{
-		const float ejeZ[4] = { 0.0, 0.0, 1.0, 0.0 } ;
-		glMatrixMode( GL_MODELVIEW ) ;
-		glPushMatrix() ;
-		glLoadIdentity() ;
-		// hacer M = Ide
-		//glMultMatrix() ; // A podría ser Ide,V o V N
-		// (3) rotación α grados en torno a eje Y
-		glRotatef( fuente->alpha, 0.0, 1.0, 0.0 ) ;
-		// (2) rotación β grados en torno al eje X-
-		glRotatef( fuente->beta, -1.0, 0.0, 0.0 ) ;
-		// (1) hacer li := (0, 0, 1) (paralela eje Z+)
-		
-		glLightfv( GL_LIGHT2, GL_POSITION, ejeZ );
-
-		glPopMatrix() ;
-	}
-}
-
-void activar_textura(Textura* textura)
-{
-	glEnable( GL_TEXTURE_2D ) ; // habilita texturas
-
-	if(textura->idTex == 0)
-	{
-		jpg::Imagen * pimg = NULL ;
-
-		// cargar la imagen (una sola vez!)
-		pimg = new jpg::Imagen(textura->nombre_fichero);
-	
-		// usar con
-		//tamy = pimg->tamY(); // num. filas (unsigned)
-		textura->texels = pimg->leerPixels(); // puntero texels (unsigned char *)
-
-		//tamx = pimg->tamX(); // num. columnas (unsigned)
-		// hace idTex igual a un nuevo identificador
-		glGenTextures( 1, &textura->idTex );
-
-		cout << "cargando la textura en memoria" << endl;
-	}
-
-	// activa textura con identificador ’idTex’ :
-	glBindTexture( GL_TEXTURE_2D, textura->idTex );
-
-
-	if(textura->genAuto)
-	{
-		glEnable( GL_TEXTURE_GEN_S ); // desactivado inicialmente
-		glEnable( GL_TEXTURE_GEN_T ); // desactivado inicialment
-
-		// para el modo de coords. de objeto:
-		glTexGenfv( GL_S, GL_OBJECT_PLANE, textura->coefsS ) ;
-		glTexGenfv( GL_T, GL_OBJECT_PLANE, textura->coefsT ) ;
-		
-		// para el modo de coords. del ojo:
-		//glTexGenfv( GL_S, GL_EYE_PLANE, coefsS ) ;
-		//glTexGenfv( GL_T, GL_EYE_PLANE, coefsT ) ;
-	}
-	else
-	{
-		glDisable( GL_TEXTURE_GEN_S ); // desactivado inicialmente
-		glDisable( GL_TEXTURE_GEN_T ); // desactivado inicialment
-	}
-}
-
-void activar_material(Material* material)
-{
-	glEnable(GL_LIGHTING); // activa evaluacion del MIL
-
-	glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT, material->colorA ) ;
-	glMaterialfv( GL_FRONT_AND_BACK, GL_DIFFUSE, material->colorD ) ;
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, material->colorS ) ;
-	glMaterialf( GL_FRONT_AND_BACK, GL_SHININESS, material->e ) ;
-
-	if(material->textura != NULL)
-		activar_textura(material->textura);
-	else
-		glDisable( GL_TEXTURE_2D ) ; 
-}
-
-EntradaNGE pesaInst(Real alpha, Real d)
+EntradaNGE pesa(Real alpha, Real d)
 {
 	EntradaNGE pesaEntrada;
 	pesaEntrada.tipo = '1';
 
 	NodoGE* pesa = new NodoGE;
 
-	EntradaNGE hilo = mallaInst("hilo.ply", true);
+	EntradaNGE hilo = malla("hilo.ply", true);
 	pesa->entrada.push_back(hilo);
 
-	EntradaNGE trans = transformacionInst('2', (Real)0.0, (Real)-1.0, (Real)0.0);
+	EntradaNGE trans = transformacion('2', (Real)0.0, (Real)-1.0, (Real)0.0);
 	pesa->entrada.push_back(trans); 
 
-	EntradaNGE rotY = transformacionInst('0', (Real)0.0, (Real)1.0, (Real)0.0, alpha);
+	EntradaNGE rotY = transformacion('0', (Real)0.0, (Real)1.0, (Real)0.0, alpha);
 	pesa->entrada.push_back(rotY);
 
-	EntradaNGE rot = transformacionInst('0', (Real)0.0, (Real)0.0, (Real)1.0, (Real)30.0);
+	EntradaNGE rot = transformacion('0', (Real)0.0, (Real)0.0, (Real)1.0, (Real)30.0);
 	pesa->entrada.push_back(rot); 
 
-	EntradaNGE hilo2 = mallaInst("hilo2.ply", true);
+	EntradaNGE hilo2 = malla("hilo2.ply", true);
 	pesa->entrada.push_back(hilo2);
 
-	EntradaNGE rot2 = transformacionInst('0', (Real)0.0, (Real)0.0, (Real)1.0, (Real)-60.0);
+	EntradaNGE rot2 = transformacion('0', (Real)0.0, (Real)0.0, (Real)1.0, (Real)-60.0);
 	pesa->entrada.push_back(rot2); 
 
-	EntradaNGE hilo3 = mallaInst("hilo2.ply", true);
+	EntradaNGE hilo3 = malla("hilo2.ply", true);
 	pesa->entrada.push_back(hilo3);
 
-	EntradaNGE rot3 = transformacionInst('0', (Real)0.0, (Real)0.0, (Real)1.0, (Real)30.0);
+	EntradaNGE rot3 = transformacion('0', (Real)0.0, (Real)0.0, (Real)1.0, (Real)30.0);
 	pesa->entrada.push_back(rot3); 
 
-	EntradaNGE trans3 = transformacionInst('2', (Real)0.0, (Real)-2.66, (Real)0.0);
+	EntradaNGE trans3 = transformacion('2', (Real)0.0, (Real)-2.66, (Real)0.0);
 	pesa->entrada.push_back(trans3); 
 
-	EntradaNGE platillo = mallaInst("platillo.ply");
+	EntradaNGE platillo = malla("platillo.ply");
 	pesa->entrada.push_back(platillo);
 
-	EntradaNGE trans4 = transformacionInst('2', d, (Real)0.1, (Real)0.0);
+	EntradaNGE trans4 = transformacion('2', d, (Real)0.1, (Real)0.0);
 	pesa->entrada.push_back(trans4); 
 
-	EntradaNGE cubo = mallaInst("cubo.ply");
+	EntradaNGE cubo = malla("cubo.ply");
 	pesa->entrada.push_back(cubo);
 
 	pesaEntrada.subesc = pesa;
@@ -794,41 +661,41 @@ EntradaNGE pesaInst(Real alpha, Real d)
 	return pesaEntrada;
 }
 
-EntradaNGE brazoInst(Real alpha1, Real alpha2, Real d)
+EntradaNGE brazo(Real alpha1, Real alpha2, Real d)
 {
 	EntradaNGE brazoEntrada;
 	brazoEntrada.tipo = '1';
 
 	NodoGE* brazo = new NodoGE;
 
-	EntradaNGE rot = transformacionInst('0', (Real)0.0, (Real)0.0, (Real)1.0, alpha1);
+	EntradaNGE rot = transformacion('0', (Real)0.0, (Real)0.0, (Real)1.0, alpha1);
 	brazo->entrada.push_back(rot); 
 
-	EntradaNGE tallo = mallaInst("tallo.ply");
+	EntradaNGE tallo = malla("tallo.ply");
 	brazo->entrada.push_back(tallo);
 
-	EntradaNGE trans2 = transformacionInst('2', (Real)0.0, (Real)3.0, (Real)0.0);
+	EntradaNGE trans2 = transformacion('2', (Real)0.0, (Real)3.0, (Real)0.0);
 	brazo->entrada.push_back(trans2); 
 
-	EntradaNGE rot2 = transformacionInst('0', (Real)0.0, (Real)0.0, (Real)1.0, -alpha1);
+	EntradaNGE rot2 = transformacion('0', (Real)0.0, (Real)0.0, (Real)1.0, -alpha1);
 	brazo->entrada.push_back(rot2);
 
-	EntradaNGE trans3 = transformacionInst('2', (Real)0.0, (Real)-1.0, (Real)0.0);
+	EntradaNGE trans3 = transformacion('2', (Real)0.0, (Real)-1.0, (Real)0.0);
 	brazo->entrada.push_back(trans3);  
 
-	EntradaNGE pesa = pesaInst(alpha2, d);
-	brazo->entrada.push_back(pesa);  
+	EntradaNGE pesa1 = pesa(alpha2, d);
+	brazo->entrada.push_back(pesa1);  
 
-	EntradaNGE rot3 = transformacionInst('0', (Real)0.0, (Real)0.0, (Real)1.0, alpha1);
+	EntradaNGE rot3 = transformacion('0', (Real)0.0, (Real)0.0, (Real)1.0, alpha1);
 	brazo->entrada.push_back(rot3);
 
-	EntradaNGE trans4 = transformacionInst('2', (Real)0.0, (Real)-6.0, (Real)0.0);
+	EntradaNGE trans4 = transformacion('2', (Real)0.0, (Real)-6.0, (Real)0.0);
 	brazo->entrada.push_back(trans4); 
 
-	EntradaNGE rot4 = transformacionInst('0', (Real)0.0, (Real)0.0, (Real)1.0, -alpha1);
+	EntradaNGE rot4 = transformacion('0', (Real)0.0, (Real)0.0, (Real)1.0, -alpha1);
 	brazo->entrada.push_back(rot4);
 
-	EntradaNGE pesa2 = pesaInst(alpha2, d);
+	EntradaNGE pesa2 = pesa(alpha2, d);
 	brazo->entrada.push_back(pesa2); 
 
 	brazoEntrada.subesc = brazo;
@@ -837,49 +704,48 @@ EntradaNGE brazoInst(Real alpha1, Real alpha2, Real d)
 }
 
 
-void escena3(Real alpha1, Real alpha2, Real d)
+NodoGE* escena3(Real alpha1, Real alpha2, Real d)
 {
-	NodoGE grafoEscena;
+	NodoGE* grafoEscena = new NodoGE;
 
-	EntradaNGE pie = mallaInst("pie.ply");
-	grafoEscena.entrada.push_back(pie); 
+	EntradaNGE pie = malla("pie.ply");
+	grafoEscena->entrada.push_back(pie); 
 	
-	EntradaNGE trans = transformacionInst('2', (Real)0.0, (Real)4.3, (Real)0.0);	
-	grafoEscena.entrada.push_back(trans); 
+	EntradaNGE trans = transformacion('2', (Real)0.0, (Real)4.3, (Real)0.0);	
+	grafoEscena->entrada.push_back(trans); 
 
-	EntradaNGE tallo = mallaInst("tallo.ply");
-	grafoEscena.entrada.push_back(tallo); 
+	EntradaNGE tallo = malla("tallo.ply");
+	grafoEscena->entrada.push_back(tallo); 
 
-	EntradaNGE trans2 = transformacionInst('2', (Real)0.0, 3.2, (Real)0.0);	
-	grafoEscena.entrada.push_back(trans2); 
+	EntradaNGE trans2 = transformacion('2', (Real)0.0, 3.2, (Real)0.0);	
+	grafoEscena->entrada.push_back(trans2); 
 
-	EntradaNGE brazoEntrada = brazoInst(alpha1, alpha2, d);
-	grafoEscena.entrada.push_back(brazoEntrada); 
+	EntradaNGE brazo1 = brazo(alpha1, alpha2, d);
+	grafoEscena->entrada.push_back(brazo1); 
 
-	NGE_Visualizar(&grafoEscena);
+	return grafoEscena;
 };
 
-EntradaNGE lataInst()
+
+//******************************************************
+// Funciones para inicializar los objetos de la escena 4
+//******************************************************
+
+EntradaNGE lata()
 {
 	EntradaNGE lataEntrada;
 	lataEntrada.tipo = '1';
 
 	NodoGE* lata = new NodoGE;
 
-	Textura* text_lata = (Textura*)malloc(sizeof(Textura));
-	text_lata->idTex = 0;
-	text_lata->nombre_fichero = "text-lata-1.jpg";
-	text_lata->genAuto = false;
-	activar_textura(text_lata);
-
-	EntradaNGE lata_pcue = mallaInst("lata-pcue.ply", true, text_lata);
+	EntradaNGE lata_pcue = malla("lata-pcue.ply", true);
 
 	lata->entrada.push_back(lata_pcue); 
 
-	EntradaNGE lata_psup = mallaInst("lata-psup.ply", true);
+	EntradaNGE lata_psup = malla("lata-psup.ply", true);
 	lata->entrada.push_back(lata_psup); 
 
-	EntradaNGE lata_pinf = mallaInst("lata-pinf.ply", true);
+	EntradaNGE lata_pinf = malla("lata-pinf.ply", true);
 	lata->entrada.push_back(lata_pinf); 
 
 	lataEntrada.subesc = lata;
@@ -887,38 +753,38 @@ EntradaNGE lataInst()
 	return lataEntrada;
 }
 
-void escena4()
+NodoGE* escena4()
 {
-	NodoGE grafoEscena;
+	NodoGE* grafoEscena = new NodoGE;
 
-	EntradaNGE esc = transformacionInst('1', (Real)5.0, (Real)5.0, (Real)5.0);	
-	grafoEscena.entrada.push_back(esc); 
+	EntradaNGE esc = transformacion('1', (Real)5.0, (Real)5.0, (Real)5.0);	
+	grafoEscena->entrada.push_back(esc); 
 
-	EntradaNGE lataEntrada = lataInst();
-	grafoEscena.entrada.push_back(lataEntrada);
+	EntradaNGE lataEntrada = lata();
+	grafoEscena->entrada.push_back(lataEntrada);
 
-	EntradaNGE esc2 = transformacionInst('1', (Real)0.05, (Real)0.05, (Real)0.05);	
-	grafoEscena.entrada.push_back(esc2); 
+	EntradaNGE esc2 = transformacion('1', (Real)0.05, (Real)0.05, (Real)0.05);	
+	grafoEscena->entrada.push_back(esc2); 
 
-	EntradaNGE trans = transformacionInst('2', (Real)-15.0, (Real)0.0, (Real)0.0);	
-	grafoEscena.entrada.push_back(trans); 
+	EntradaNGE trans = transformacion('2', (Real)-15.0, (Real)0.0, (Real)0.0);	
+	grafoEscena->entrada.push_back(trans); 
 
-	EntradaNGE peon1 = mallaInst("peon.ply", true);
-	grafoEscena.entrada.push_back(peon1);
+	EntradaNGE peon1 = malla("peon.ply", true);
+	grafoEscena->entrada.push_back(peon1);
 
-	EntradaNGE trans2 = transformacionInst('2', (Real)0.0, (Real)0.0, (Real)10.0);	
-	grafoEscena.entrada.push_back(trans2); 
+	EntradaNGE trans2 = transformacion('2', (Real)0.0, (Real)0.0, (Real)10.0);	
+	grafoEscena->entrada.push_back(trans2); 
 
-	EntradaNGE peon2 = mallaInst("peon.ply", true);
-	grafoEscena.entrada.push_back(peon2);
+	EntradaNGE peon2 = malla("peon.ply", true);
+	grafoEscena->entrada.push_back(peon2);
 
-	EntradaNGE trans3 = transformacionInst('2', (Real)0.0, (Real)0.0, (Real)10.0);	
-	grafoEscena.entrada.push_back(trans3); 
+	EntradaNGE trans3 = transformacion('2', (Real)0.0, (Real)0.0, (Real)10.0);	
+	grafoEscena->entrada.push_back(trans3); 
 
-	EntradaNGE peon3 = mallaInst("peon.ply", true);
-	grafoEscena.entrada.push_back(peon3);
+	EntradaNGE peon3 = malla("peon.ply", true);
+	grafoEscena->entrada.push_back(peon3);
 
-	NGE_Visualizar(&grafoEscena);
+	return grafoEscena;
 }
 
 
