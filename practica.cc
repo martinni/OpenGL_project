@@ -145,7 +145,7 @@ void draw_objects()
 	{
 		case 1:
 			if(malla1.num_ver == 0)
-				generar_malla(&malla1, fichero.c_str(), false, 0, 0.17, 0.37, 0.38);
+				generar_malla(&malla1, fichero, false, 0, 0.17, 0.37, 0.38);
 			MTVT_Visualizar_VBOs_AV(&malla1);
 			break;
 		case 2:
